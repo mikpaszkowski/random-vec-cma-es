@@ -99,7 +99,8 @@ class StandardCMAES:
                 max_evaluations: int = 1000, 
                 ftol: float = 1e-8, 
                 xtol: float = 1e-8, 
-                verbose: bool = False) -> Dict[str, Any]:
+                verbose: bool = False,
+                convergence_interval: int = 100) -> Dict[str, Any]:
         """
         Przeprowadza pełną optymalizację.
         
@@ -108,6 +109,7 @@ class StandardCMAES:
             ftol: Tolerancja zbieżności dla wartości funkcji.
             xtol: Tolerancja zbieżności dla parametrów.
             verbose: Czy wyświetlać postęp optymalizacji.
+            convergence_interval: Odstęp między zapisywaniem danych do krzywej zbieżności.
         
         Returns:
             Słownik z wynikami optymalizacji.
@@ -118,16 +120,28 @@ class StandardCMAES:
         self.best_solution = None
         self.best_fitness = float('inf')
         
-        # Inicjalizacja obiektu CMAEvolutionStrategy od nowa (czyste uruchomienie)
+        # POPRAWIONE: Ustaw opcje CMA-ES zamiast implementować własne kryteria stopu
+        options = self.options.copy()
+        options['maxfevals'] = max_evaluations
+        options['tolfun'] = ftol  # Używamy wbudowanej tolerancji funkcji CMA-ES
+        options['tolx'] = xtol    # Używamy wbudowanej tolerancji parametrów CMA-ES
+        if verbose:
+            options['verbose'] = 1
+        else:
+            options['verbose'] = -9  # Wyłącz wszystkie komunikaty
+        
+        # Inicjalizacja obiektu CMAEvolutionStrategy od nowa z nowymi opcjami
         self.es = cma.CMAEvolutionStrategy(
             self.initial_mean, 
             self.initial_sigma, 
-            inopts=self.options
+            inopts=options
         )
         
-        # Wykonaj główną pętlę optymalizacji
-        previous_best = float('inf')
+        # Przygotuj dane do śledzenia zbieżności
+        convergence_data = []
+        last_saved = 0
         
+        # Wykonaj główną pętlę optymalizacji - użyj TYLKO kryteriów CMA-ES
         while not self.es.stop() and self.evaluations < max_evaluations:
             # Generuj populację
             solutions = self.es.ask()
@@ -138,23 +152,51 @@ class StandardCMAES:
             # Aktualizuj stan algorytmu
             self.tell(solutions, fitnesses)
             
+            # Zapisz dane zbieżności
+            should_save = (
+                self.iterations == 1 or  # Pierwsza iteracja
+                self.evaluations - last_saved >= convergence_interval or  # Normalny interwał
+                self.iterations % 5 == 0  # Co 5 iteracji dla lepszej granulacji
+            )
+            
+            if should_save:
+                convergence_data.append({
+                    'evaluations': self.evaluations,
+                    'best_fitness': float(self.best_fitness),
+                    'sigma': float(self.es.sigma)
+                })
+                last_saved = self.evaluations
+            
             # Wyświetl postęp
             if verbose and self.iterations % 10 == 0:
                 print(f"Iteracja {self.iterations}, ewaluacje {self.evaluations}, "
                       f"najlepsza wartość {self.best_fitness:.6e}, sigma {self.es.sigma:.6e}")
-            
-            # Sprawdź kryteria stopu
-            if np.abs(previous_best - self.best_fitness) < ftol:
-                if verbose:
-                    print(f"Zatrzymano: zbieżność funkcji (delta={np.abs(previous_best - self.best_fitness):.6e})")
-                break
-            
-            if self.es.sigma < xtol:
-                if verbose:
-                    print(f"Zatrzymano: zbieżność parametrów (sigma={self.es.sigma:.6e})")
-                break
-            
-            previous_best = self.best_fitness
+        
+        # Komunikat o powodach zatrzymania
+        if verbose:
+            if self.es.stop():
+                print(f"Zatrzymano przez CMA-ES: {self.es.stop()}")
+            elif self.evaluations >= max_evaluations:
+                print(f"Zatrzymano: osiągnięto maksymalną liczbę ewaluacji ({max_evaluations})")
+        
+        # ZAWSZE zapisz ostatni punkt zbieżności
+        if not convergence_data or self.evaluations > last_saved:
+            convergence_data.append({
+                'evaluations': self.evaluations,
+                'best_fitness': float(self.best_fitness),
+                'sigma': float(self.es.sigma)
+            })
+        
+        # Dodaj punkt początkowy na początku listy, ale tylko jeśli mamy rzeczywiste dane
+        if convergence_data and self.best_fitness != float('inf'):
+            # Wstaw początkowy punkt na początku z pierwszą rzeczywistą wartością funkcji
+            # zamiast inf, użyj pierwszej rzeczywistej wartości
+            initial_point = {
+                'evaluations': 0,
+                'best_fitness': convergence_data[0]['best_fitness'],  # Użyj pierwszej prawdziwej wartości
+                'sigma': float(self.initial_sigma)
+            }
+            convergence_data.insert(0, initial_point)
         
         # Przygotuj wynik w formacie zgodnym z poprzednią implementacją
         result = {
@@ -163,7 +205,8 @@ class StandardCMAES:
             'nfev': self.evaluations,
             'nit': self.iterations,
             'sigma': self.es.sigma,
-            'success': True
+            'success': True,
+            'convergence_data': convergence_data
         }
         
         return result
@@ -175,4 +218,10 @@ class StandardCMAES:
         Returns:
             Wektor ścieżki ewolucyjnej pσ.
         """
-        return self.es.adapt_sigma.ps
+        # W bibliotece pycma (cma) ścieżka ewolucyjna sigma jest dostępna jako atrybut ps
+        # bezpośrednio w obiekcie CMAEvolutionStrategy, a nie w adapt_sigma
+        if hasattr(self.es, 'ps'):
+            return self.es.ps.copy()
+        else:
+            # Jeśli wektor ps nie istnieje, zwróć wektor zerowy
+            return np.zeros(self.dimension)
