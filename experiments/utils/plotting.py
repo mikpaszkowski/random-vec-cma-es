@@ -259,37 +259,6 @@ def generate_comparison_plots(results_dir):
         plt.close()
 
 
-def generate_summary_plots(results_dir):
-    """
-    Generuje wszystkie wykresy dla danego katalogu wyników.
-    
-    Args:
-        results_dir: Katalog z wynikami eksperymentów.
-    """
-    # Wczytaj konfigurację
-    config_filepath = os.path.join(results_dir, 'experiment_config.json')
-    if not os.path.exists(config_filepath):
-        print(f"Brak pliku konfiguracyjnego: {config_filepath}")
-        return
-    
-    with open(config_filepath, 'r') as f:
-        config = json.load(f)
-    
-    # Generuj wykresy zbieżności
-    for function in config['functions']:
-        for dimension in config['dimensions']:
-            for algorithm in config['algorithms']:
-                for generator in config['generators']:
-                    generate_convergence_plot(
-                        results_dir, function, dimension, algorithm, generator, config['seeds']
-                    )
-    
-    # Generuj wykresy porównawcze
-    generate_comparison_plots(results_dir)
-    
-    print(f"Wygenerowano wykresy w katalogu: {results_dir}")
-
-
 def calculate_wilcoxon_tests(results_dir):
     """
     Przeprowadza testy Wilcoxona dla par skorelowanych w celu określenia istotności różnic

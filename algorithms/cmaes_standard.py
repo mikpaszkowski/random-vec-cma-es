@@ -2,19 +2,19 @@
 # -*- coding: utf-8 -*-
 
 """
-Standardowa implementacja algorytmu CMA-ES (Covariance Matrix Adaptation Evolution Strategy).
-W tej wersji wektor ścieżki ewolucyjnej (pσ) jest inicjalizowany standardowo jako wektor zerowy.
-Implementacja oparta jest na bibliotece pycma.
+Standardowa implementacja algorytmu CMA-ES (Covariance Matrix Adaptation Evolution Strategy)
+używająca biblioteki cmaes CyberAgentAILab.
+Ta implementacja jest alternatywą dla pycma i oferuje podobny interfejs ask-tell.
 """
 
 import numpy as np
-import cma
+import cmaes
 from typing import Callable, Dict, Any, Optional, Tuple
 
 
-class StandardCMAES:
+class StandardCMAESLib:
     """
-    Standardowa implementacja algorytmu CMA-ES wykorzystująca bibliotekę pycma.
+    Standardowa implementacja algorytmu CMA-ES wykorzystująca bibliotekę cmaes CyberAgentAILab.
     """
     
     def __init__(self, 
@@ -39,24 +39,17 @@ class StandardCMAES:
         self.initial_sigma = initial_sigma
         self.dimension = len(initial_mean)
         
-        # Inicjalizacja opcji CMA-ES
-        self.options = cma.CMAOptions()
-        
-        # Ustawienie rozmiaru populacji
-        if population_size is not None:
-            self.options['popsize'] = population_size
-        
-        # Ustawienie ziarna losowego, jeśli dostarczono generator
+        # Ustalenie ziarna losowego
+        seed = None
         if random_generator is not None and hasattr(random_generator, 'get_seed'):
             seed = random_generator.get_seed()
-            if seed is not None:
-                self.options['seed'] = seed
         
-        # Inicjalizacja obiektu CMAEvolutionStrategy
-        self.es = cma.CMAEvolutionStrategy(
-            self.initial_mean, 
-            self.initial_sigma, 
-            inopts=self.options
+        # Inicjalizacja obiektu CMA
+        self.optimizer = cmaes.CMA(
+            mean=self.initial_mean.copy(),
+            sigma=self.initial_sigma,
+            population_size=population_size,
+            seed=seed
         )
         
         # Inicjalizacja statystyk
@@ -64,6 +57,8 @@ class StandardCMAES:
         self.iterations = 0
         self.best_solution = None
         self.best_fitness = float('inf')
+        self.current_population = []
+        self.current_fitness_values = []
     
     def ask(self) -> np.ndarray:
         """
@@ -72,7 +67,13 @@ class StandardCMAES:
         Returns:
             Macierz punktów (wiersze to osobniki, kolumny to wymiary).
         """
-        return self.es.ask()
+        # Wygeneruj całą populację
+        self.current_population = []
+        for _ in range(self.optimizer.population_size):
+            x = self.optimizer.ask()
+            self.current_population.append(x)
+        
+        return np.array(self.current_population)
     
     def tell(self, solutions: np.ndarray, fitnesses: np.ndarray) -> None:
         """
@@ -92,8 +93,11 @@ class StandardCMAES:
             self.best_fitness = fitnesses[best_idx]
             self.best_solution = solutions[best_idx].copy()
         
+        # Przygotuj dane dla biblioteki cmaes - lista tupli (rozwiązanie, fitness)
+        solutions_with_fitness = [(solutions[i], fitnesses[i]) for i in range(len(solutions))]
+        
         # Przekaż wyniki do CMA-ES
-        self.es.tell(solutions, fitnesses)
+        self.optimizer.tell(solutions_with_fitness)
     
     def optimize(self, 
                 max_evaluations: int = 1000, 
@@ -120,37 +124,50 @@ class StandardCMAES:
         self.best_solution = None
         self.best_fitness = float('inf')
         
-        # POPRAWIONE: Ustaw opcje CMA-ES zamiast implementować własne kryteria stopu
-        options = self.options.copy()
-        options['maxfevals'] = max_evaluations
-        options['tolfun'] = ftol  # Używamy wbudowanej tolerancji funkcji CMA-ES
-        options['tolx'] = xtol    # Używamy wbudowanej tolerancji parametrów CMA-ES
-        if verbose:
-            options['verbose'] = 1
-        else:
-            options['verbose'] = -9  # Wyłącz wszystkie komunikaty
+        # Reinicjalizuj optimizer z nowym ziarnem jeśli potrzeba
+        seed = None
+        if hasattr(self, 'random_generator') and self.random_generator is not None:
+            if hasattr(self.random_generator, 'get_seed'):
+                seed = self.random_generator.get_seed()
         
-        # Inicjalizacja obiektu CMAEvolutionStrategy od nowa z nowymi opcjami
-        self.es = cma.CMAEvolutionStrategy(
-            self.initial_mean, 
-            self.initial_sigma, 
-            inopts=options
+        self.optimizer = cmaes.CMA(
+            mean=self.initial_mean.copy(),
+            sigma=self.initial_sigma,
+            population_size=self.optimizer.population_size,
+            seed=seed
         )
         
         # Przygotuj dane do śledzenia zbieżności
         convergence_data = []
         last_saved = 0
         
-        # Wykonaj główną pętlę optymalizacji - użyj TYLKO kryteriów CMA-ES
-        while not self.es.stop() and self.evaluations < max_evaluations:
+        # Pomocnicze zmienne dla kryteriów stopu
+        prev_best = float('inf')
+        stagnation_count = 0
+        max_stagnation = 100  # Maksymalna liczba iteracji bez poprawy
+        
+        # Wykonaj główną pętlę optymalizacji
+        while not self.optimizer.should_stop() and self.evaluations < max_evaluations:
             # Generuj populację
-            solutions = self.es.ask()
+            solutions = self.ask()
             
             # Oceniaj populację
             fitnesses = np.array([self.objective_function(x) for x in solutions])
             
             # Aktualizuj stan algorytmu
             self.tell(solutions, fitnesses)
+            
+            # Sprawdź kryterium stopu dla ftol
+            if abs(self.best_fitness - prev_best) < ftol:
+                stagnation_count += 1
+            else:
+                stagnation_count = 0
+            prev_best = self.best_fitness
+            
+            if stagnation_count >= max_stagnation:
+                if verbose:
+                    print(f"Zatrzymano: brak poprawy przez {max_stagnation} iteracji (ftol={ftol})")
+                break
             
             # Zapisz dane zbieżności
             should_save = (
@@ -163,19 +180,19 @@ class StandardCMAES:
                 convergence_data.append({
                     'evaluations': self.evaluations,
                     'best_fitness': float(self.best_fitness),
-                    'sigma': float(self.es.sigma)
+                    'sigma': float(self.initial_sigma)  # cmaes nie eksportuje sigma w prosty sposób
                 })
                 last_saved = self.evaluations
             
             # Wyświetl postęp
             if verbose and self.iterations % 10 == 0:
                 print(f"Iteracja {self.iterations}, ewaluacje {self.evaluations}, "
-                      f"najlepsza wartość {self.best_fitness:.6e}, sigma {self.es.sigma:.6e}")
+                      f"najlepsza wartość {self.best_fitness:.6e}")
         
         # Komunikat o powodach zatrzymania
         if verbose:
-            if self.es.stop():
-                print(f"Zatrzymano przez CMA-ES: {self.es.stop()}")
+            if self.optimizer.should_stop():
+                print(f"Zatrzymano przez bibliotekę cmaes")
             elif self.evaluations >= max_evaluations:
                 print(f"Zatrzymano: osiągnięto maksymalną liczbę ewaluacji ({max_evaluations})")
         
@@ -184,28 +201,26 @@ class StandardCMAES:
             convergence_data.append({
                 'evaluations': self.evaluations,
                 'best_fitness': float(self.best_fitness),
-                'sigma': float(self.es.sigma)
+                'sigma': float(self.initial_sigma)
             })
         
-        # Dodaj punkt początkowy na początku listy, ale tylko jeśli mamy rzeczywiste dane
+        # Dodaj punkt początkowy na początku listy
         if convergence_data and self.best_fitness != float('inf'):
-            # Wstaw początkowy punkt na początku z pierwszą rzeczywistą wartością funkcji
-            # zamiast inf, użyj pierwszej rzeczywistej wartości
             initial_point = {
                 'evaluations': 0,
-                'best_fitness': convergence_data[0]['best_fitness'],  # Użyj pierwszej prawdziwej wartości
+                'best_fitness': convergence_data[0]['best_fitness'],
                 'sigma': float(self.initial_sigma)
             }
             convergence_data.insert(0, initial_point)
         
-        # Przygotuj wynik w formacie zgodnym z poprzednią implementacją
+        # Przygotuj wyniki w formacie zgodnym z pycma
         result = {
-            'x': self.best_solution,
-            'fun': self.best_fitness,
+            'xbest': self.best_solution if self.best_solution is not None else self.initial_mean.copy(),
+            'fbest': self.best_fitness,
+            'fun': self.best_fitness,  # Alias dla zgodności
+            'x': self.best_solution if self.best_solution is not None else self.initial_mean.copy(),
             'nfev': self.evaluations,
             'nit': self.iterations,
-            'sigma': self.es.sigma,
-            'success': True,
             'convergence_data': convergence_data
         }
         
@@ -213,14 +228,26 @@ class StandardCMAES:
     
     def get_ps(self) -> np.ndarray:
         """
-        Zwraca aktualny wektor ścieżki ewolucyjnej pσ.
+        Zwraca wektor ścieżki ewolucyjnej pσ.
+        
+        Uwaga: Biblioteka cmaes nie eksportuje wewnętrznych zmiennych stanu jak ps.
+        Zwracamy wektor zerowy dla zachowania zgodności interfejsu.
         
         Returns:
-            Wektor ścieżki ewolucyjnej pσ.
+            Wektor ścieżki ewolucyjnej (wektor zerowy dla tej implementacji).
         """
-        # POPRAWKA: ps znajduje się w es.adapt_sigma.ps, nie w es.ps
-        if hasattr(self.es, 'adapt_sigma') and hasattr(self.es.adapt_sigma, 'ps'):
-            return self.es.adapt_sigma.ps.copy()
-        else:
-            # Jeśli wektor ps nie istnieje (przed pierwszą iteracją), zwróć wektor zerowy
-            return np.zeros(self.dimension)
+        # Biblioteka cmaes nie eksportuje ps, zwracamy wektor zerowy
+        return np.zeros(self.dimension)
+    
+    @property
+    def sigma(self) -> float:
+        """
+        Zwraca aktualną wartość sigma.
+        
+        Uwaga: Biblioteka cmaes nie eksportuje sigma w prosty sposób.
+        Zwracamy wartość początkową.
+        
+        Returns:
+            Aktualna wartość sigma (wartość początkowa dla tej implementacji).
+        """
+        return self.initial_sigma 

@@ -15,7 +15,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import komponentów projektu
-from algorithms import StandardCMAES, ModifiedCMAES
+from algorithms import StandardCMAES, ModifiedCMAES, StandardCMAESLib, ModifiedCMAESLib
 from functions import get_function
 from generators import get_generator
 from experiments.data_collector import DataCollector
@@ -31,17 +31,50 @@ class ExperimentRunner:
     Klasa odpowiedzialna za uruchamianie eksperymentów porównujących algorytmy CMA-ES.
     """
     
-    def __init__(self, config_dict=None, output_dir=None):
+    def __init__(self, config_dict=None, output_dir=None, library='pycma'):
         """
         Inicjalizacja obiektu ExperimentRunner.
         
         Args:
             config_dict: Słownik z konfiguracją eksperymentu.
             output_dir: Katalog wyjściowy dla wyników. Jeśli None, zostanie utworzony katalog z bieżącą datą i czasem.
+            library: Biblioteka CMA-ES do użycia ('pycma' lub 'cmaes'). Domyślnie 'pycma'.
         """
         self.config = config_dict or {}
+        self.library = library
         self.data_collector = DataCollector(output_dir)
         self.output_dir = self.data_collector.base_dir
+        
+        # Walidacja wyboru biblioteki
+        if library not in ['pycma', 'cmaes']:
+            raise ValueError(f"Nieznana biblioteka: {library}. Dostępne opcje: 'pycma', 'cmaes'")
+    
+    def _get_algorithm_class(self, algorithm_name: str):
+        """
+        Zwraca odpowiednią klasę algorytmu na podstawie wybranej biblioteki.
+        
+        Args:
+            algorithm_name: Nazwa algorytmu ('standard' lub 'modified').
+            
+        Returns:
+            Klasa algorytmu.
+        """
+        if algorithm_name == 'standard':
+                return StandardCMAESLib
+        else:  # 'modified'
+                return ModifiedCMAESLib
+        # if self.library == 'pycma':
+        #     if algorithm_name == 'standard':
+        #         return StandardCMAES
+        #     else:  # 'modified'
+        #         return ModifiedCMAES
+        # elif self.library == 'cmaes':
+        #     if algorithm_name == 'standard':
+        #         return StandardCMAESLib
+        #     else:  # 'modified'
+        #         return ModifiedCMAESLib
+        # else:
+        #     raise ValueError(f"Nieznana biblioteka: {self.library}")
     
     def run_single_experiment(self, function_name, dimension, algorithm_name, 
                              generator_name, seed, **kwargs):
@@ -59,7 +92,7 @@ class ExperimentRunner:
         Returns:
             Słownik z wynikami eksperymentu lub None w przypadku błędu.
         """
-        print(f"Uruchamiam: {function_name} {dimension}D, {algorithm_name}, {generator_name}, seed={seed}")
+        print(f"Uruchamiam ({self.library}): {function_name} {dimension}D, {algorithm_name}, {generator_name}, seed={seed}")
         
         try:
             # Przygotowanie środowiska
@@ -76,21 +109,14 @@ class ExperimentRunner:
             xtol = kwargs.get('xtol', DEFAULT_XTOL)
             convergence_interval = kwargs.get('convergence_interval', 100)
             
-            # Utworzenie algorytmu
-            if algorithm_name == 'standard':
-                algorithm = StandardCMAES(
-                    function,
-                    initial_mean=initial_mean,
-                    initial_sigma=initial_sigma,
-                    random_generator=generator
-                )
-            else:  # 'modified'
-                algorithm = ModifiedCMAES(
-                    function,
-                    initial_mean=initial_mean,
-                    initial_sigma=initial_sigma,
-                    random_generator=generator
-                )
+            # Utworzenie algorytmu - używanie odpowiedniej klasy na podstawie biblioteki
+            AlgorithmClass = self._get_algorithm_class(algorithm_name)
+            algorithm = AlgorithmClass(
+                function,
+                initial_mean=initial_mean,
+                initial_sigma=initial_sigma,
+                random_generator=generator
+            )
                 
             # Zapis początkowej wartości ps - BEZPOŚREDNIO po utworzeniu algorytmu
             # bez żadnych dummy cycles, które zużywałyby stan algorytmu
@@ -114,7 +140,10 @@ class ExperimentRunner:
             convergence_data = result.get('convergence_data', [])
             
             # Sprawdzenie czy osiągnięto zadaną dokładność
-            threshold = ACCURACY_THRESHOLDS.get(function_name, 1e-6)
+            threshold = ACCURACY_THRESHOLDS.get(function_name, {})
+            print(f"Threshold: {threshold}")
+            threshold = threshold.get(f"{dimension}D", 1e-6)
+            print(f"Threshold: {threshold}")
             success = result['fun'] < threshold
             
             # Przygotuj dane wynikowe
@@ -124,6 +153,7 @@ class ExperimentRunner:
                 'algorithm': algorithm_name,
                 'generator': generator_name,
                 'seed': seed,
+                'library': self.library,  # Dodaj informację o użytej bibliotece
                 'result': result,
                 'success': success,
                 'execution_time': end_time - start_time,
@@ -163,13 +193,14 @@ class ExperimentRunner:
         
         # Liczenie całkowitej liczby eksperymentów
         total_experiments = len(dimensions) * len(functions) * len(algorithms) * len(generators) * len(seeds)
-        print(f"Rozpoczynam serię {total_experiments} eksperymentów...")
+        print(f"Rozpoczynam serię {total_experiments} eksperymentów z biblioteką {self.library}...")
         
         # Zapisanie konfiguracji
         config_path = os.path.join(self.output_dir, 'experiment_config.json')
         with open(config_path, 'w') as f:
             import json
             config = {
+                'library': self.library,  # Dodaj informację o bibliotece
                 'dimensions': dimensions,
                 'functions': functions,
                 'algorithms': algorithms,
@@ -209,6 +240,7 @@ class ExperimentRunner:
                             # Zapisywanie postępu
                             with open(os.path.join(self.output_dir, 'progress.txt'), 'w') as f:
                                 f.write(f"Ukończono {completed}/{total_experiments} ({progress:.2f}%)\n")
+                                f.write(f"Biblioteka: {self.library}\n")
                                 f.write(f"Ostatni eksperyment: {function_name} {dimension}D, {algorithm_name}, {generator_name}, seed={seed}\n")
         
         # Zapisanie zbiorczych statystyk

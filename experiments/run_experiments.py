@@ -22,7 +22,6 @@ from experiments.config import (
     DEFAULT_SEEDS, DEFAULT_MAX_EVALUATIONS, DEFAULT_FTOL, DEFAULT_XTOL,
     DEFAULT_INITIAL_SIGMA
 )
-from experiments.utils import generate_summary_plots, calculate_wilcoxon_tests
 
 
 def parse_arguments():
@@ -39,6 +38,8 @@ def parse_arguments():
                        help='Generatory liczb losowych do użycia')
     parser.add_argument('--seeds', nargs='+', type=int, default=None,
                        help='Ziarna do użycia (domyślnie: DEFAULT_SEEDS)')
+    parser.add_argument('--library', choices=['pycma', 'cmaes'], default='pycma',
+                       help='Biblioteka CMA-ES do użycia (domyślnie: pycma)')
     parser.add_argument('--max-evaluations', type=int, default=DEFAULT_MAX_EVALUATIONS,
                        help='Maksymalna liczba ewaluacji funkcji')
     parser.add_argument('--ftol', type=float, default=DEFAULT_FTOL,
@@ -49,14 +50,6 @@ def parse_arguments():
                        help='Początkowa wartość sigma')
     parser.add_argument('--output-dir', type=str, default=None,
                        help='Katalog wynikowy (domyślnie: results/YYYYMMDD_HHMMSS)')
-    parser.add_argument('--parallel', action='store_true',
-                       help='Czy uruchamiać eksperymenty równolegle (nie zaimplementowane)')
-    parser.add_argument('--n-jobs', type=int, default=-1,
-                       help='Liczba procesów równoległych (nie zaimplementowane)')
-    parser.add_argument('--only-plots', action='store_true',
-                       help='Tylko generuj wykresy dla istniejących wyników')
-    parser.add_argument('--only-stats', action='store_true',
-                       help='Tylko generuj statystyki dla istniejących wyników')
     
     return parser.parse_args()
 
@@ -72,18 +65,9 @@ def main():
             os.makedirs(output_dir, exist_ok=True)
     else:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_dir = os.path.join('results', timestamp)
+        library_suffix = f"_{args.library}" if args.library != 'pycma' else ""
+        output_dir = os.path.join('results', timestamp + library_suffix)
         os.makedirs(output_dir, exist_ok=True)
-    
-    # Jeśli tylko generujemy wykresy lub statystyki
-    if args.only_plots or args.only_stats:
-        if args.only_plots:
-            print(f"Generowanie wykresów dla wyników w katalogu: {output_dir}")
-            generate_summary_plots(output_dir)
-        if args.only_stats:
-            print(f"Generowanie statystyk dla wyników w katalogu: {output_dir}")
-            calculate_wilcoxon_tests(output_dir)
-        return 0
     
     # Przygotowanie konfiguracji
     config = {
@@ -98,37 +82,26 @@ def main():
         'initial_sigma': args.initial_sigma
     }
     
-    # Utworzenie i uruchomienie eksperymentów
-    runner = ExperimentRunner(config, output_dir)
+    # Utworzenie i uruchomienie eksperymentów z wybraną biblioteką
+    runner = ExperimentRunner(config, output_dir, library=args.library)
     
     print(f"Rozpoczynam eksperymenty z następującą konfiguracją:")
+    print(f"  library: {args.library}")
     for key, value in config.items():
         print(f"  {key}: {value}")
     print(f"Wyniki będą zapisywane w: {output_dir}")
     
     # Uruchomienie eksperymentów
-    try:
-        results = runner.run_experiment_batch(**config)
-        
-        # Generowanie wykresów i statystyk
-        print("Generowanie wykresów podsumowujących...")
-        generate_summary_plots(output_dir)
-        
-        print("Przeprowadzanie analizy statystycznej...")
-        calculate_wilcoxon_tests(output_dir)
-        
-        print(f"\nEksperymenty zakończone. Wyniki zapisane w: {output_dir}")
-        return 0
+    start_time = datetime.now()
+    results = runner.run_experiment_batch(**config)
+    end_time = datetime.now()
     
-    except KeyboardInterrupt:
-        print("\nPrzerwano eksperymenty przez użytkownika.")
-        return 1
+    print(f"\nEksperymenty zakończone!")
+    print(f"Czas wykonania: {end_time - start_time}")
+    print(f"Liczba udanych eksperymentów: {len(results)}")
+    print(f"Wyniki zapisane w: {output_dir}")
     
-    except Exception as e:
-        print(f"\nBłąd podczas przeprowadzania eksperymentów: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return 1
+    return 0
 
 
 if __name__ == '__main__':

@@ -3,25 +3,25 @@
 
 """
 Implementacja generatora liczb pseudolosowych PCG (Permuted Congruential Generator).
-Wykorzystuje implementację z biblioteki pcg-numpy.
+Wykorzystuje wbudowany PCG64 z NumPy jako bit generator.
 """
 
 import numpy as np
 import warnings
 
-try:
-    import pcg
-    PCG_AVAILABLE = True
-except ImportError:
-    PCG_AVAILABLE = False
-    warnings.warn("Biblioteka pcg-numpy nie jest dostępna. Generator PCG będzie emulowany przez Mersenne Twister.", 
+# PCG64 jest dostępny w NumPy od wersji 1.17+
+PCG_AVAILABLE = hasattr(np.random, 'PCG64')
+
+if not PCG_AVAILABLE:
+    warnings.warn("Generator PCG64 nie jest dostępny w tej wersji NumPy. "
+                  "Generator PCG będzie emulowany przez Mersenne Twister.", 
                   ImportWarning)
 
 
 class PCG:
     """
     Wrapper dla generatora PCG (Permuted Congruential Generator).
-    Jeśli biblioteka pcg-numpy nie jest dostępna, używa generatora Mersenne Twister jako fallback.
+    Jeśli PCG64 nie jest dostępny, używa generatora Mersenne Twister jako fallback.
     """
     
     def __init__(self, seed=None):
@@ -34,9 +34,11 @@ class PCG:
         self.seed = seed
         
         if PCG_AVAILABLE:
-            self.rng = pcg.PCG64(seed)
+            # Używamy Generator z PCG64 jako bit generator
+            bit_generator = np.random.PCG64(seed)
+            self.rng = np.random.Generator(bit_generator)
         else:
-            # Fallback do Mersenne Twister jeśli biblioteka pcg nie jest dostępna
+            # Fallback do Mersenne Twister jeśli PCG64 nie jest dostępny
             self.rng = np.random.RandomState(seed)
             print("Uwaga: Używam Mersenne Twister jako fallback zamiast PCG!")
         
@@ -60,8 +62,6 @@ class PCG:
             Tablica liczb pseudolosowych z rozkładu normalnego N(0, 1).
         """
         if PCG_AVAILABLE:
-            # W przypadku PCG64, wygeneruj liczbę z przedziału [0,1) a następnie przekształć
-            # do rozkładu normalnego używając odwrotnej funkcji dystrybuanty
             return self.rng.standard_normal(args if args else None)
         else:
             return self.rng.randn(*args)

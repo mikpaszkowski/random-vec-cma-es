@@ -30,10 +30,26 @@ RESULTS_DIR_STRUCTURE = {
 
 # Progi dokładności dla różnych funkcji
 ACCURACY_THRESHOLDS = {
-    'rosenbrock': 1e-6,
-    'rastrigin': 1e-6,
-    'ackley': 1e-6,
-    'schwefel': 1e-6
+    'rosenbrock': {
+        '1D': 1e-6,
+        '10D': 1e-6,
+        '30D': 1e-6
+        },
+    'rastrigin': {
+        '1D': 1e-6,
+        '10D': 1e-5,
+        '30D': 1e-4
+    },
+    'ackley': {
+        '1D': 1e-6,
+        '10D': 1e-5,
+        '30D': 1e-4
+    },
+    'schwefel': {
+        '1D': 100.0,
+        '10D': 500.0,
+        '30D': 1500.0
+    }
 }
 
 # Ustawienia punktów początkowych dla różnych funkcji

@@ -61,19 +61,9 @@ class ModifiedCMAES(StandardCMAES):
             # Użyj standardowego generatora numpy
             random_ps = np.random.randn(self.dimension)
         
-        # Przypisz losowy wektor do ścieżki ewolucyjnej pσ
-        # Najpierw sprawdź czy obiekt es istnieje i czy ma już zainicjalizowane ps
-        if hasattr(self, 'es') and self.es is not None:
-            if hasattr(self.es, 'ps'):
-                # ps już istnieje, możemy je bezpośrednio zastąpić
-                self.es.ps = random_ps.copy()
-            else:
-                # ps nie istnieje jeszcze - biblioteka pycma zainicjalizuje je przy pierwszym ask()
-                # Zapisz losowy wektor do użycia po pierwszym ask()
-                self._pending_random_ps = random_ps.copy()
-        else:
-            # Obiekt es nie istnieje jeszcze - zapisz do użycia później
-            self._pending_random_ps = random_ps.copy()
+        # POPRAWKA: ps znajduje się w es.adapt_sigma.ps, nie w es.ps
+        # ps jest inicjalizowane dopiero po pierwszym tell(), więc zawsze zapisz do _pending_random_ps
+        self._pending_random_ps = random_ps.copy()
     
     def ask(self) -> np.ndarray:
         """
@@ -85,12 +75,29 @@ class ModifiedCMAES(StandardCMAES):
         # Wywołaj standardową metodę ask
         solutions = super().ask()
         
-        # Jeśli mamy oczekujący losowy ps, ustaw go teraz (po pierwszym ask, gdy ps już istnieje)
-        if hasattr(self, '_pending_random_ps') and hasattr(self.es, 'ps'):
-            self.es.ps = self._pending_random_ps.copy()
-            delattr(self, '_pending_random_ps')  # Usuń oczekujący ps
-        
+        # Nie rób nic tutaj - ps nie jest jeszcze zainicjalizowane po ask()
         return solutions
+    
+    def tell(self, solutions: np.ndarray, fitnesses: np.ndarray) -> None:
+        """
+        Aktualizuje stan algorytmu na podstawie wyników oceny populacji.
+        POPRAWKA: Ustawia losowe ps po pierwszym wywołaniu tell().
+        
+        Args:
+            solutions: Macierz punktów (wiersze to osobniki, kolumny to wymiary).
+            fitnesses: Wektor wartości funkcji celu dla każdego osobnika.
+        """
+        # Wywołaj standardową metodę tell - to zainicjalizuje ps
+        super().tell(solutions, fitnesses)
+        
+        # POPRAWKA: Po tell() sprawdź czy ps zostało zainicjalizowane i zastąp je losowym
+        if (hasattr(self, '_pending_random_ps') and 
+            hasattr(self.es, 'adapt_sigma') and 
+            hasattr(self.es.adapt_sigma, 'ps')):
+            
+            # Zastąp standardowe ps (wektor zer) naszym losowym ps
+            self.es.adapt_sigma.ps = self._pending_random_ps.copy()
+            delattr(self, '_pending_random_ps')  # Usuń oczekujący ps
     
     def optimize(self, 
                 max_evaluations: int = 1000, 
@@ -242,9 +249,9 @@ class ModifiedCMAES(StandardCMAES):
         if hasattr(self, '_pending_random_ps'):
             return self._pending_random_ps.copy()
         
-        # Następnie sprawdź czy es ma już ps
-        if hasattr(self, 'es') and self.es is not None and hasattr(self.es, 'ps'):
-            return self.es.ps.copy()
+        # POPRAWKA: ps znajduje się w es.adapt_sigma.ps, nie w es.ps
+        if hasattr(self, 'es') and self.es is not None and hasattr(self.es, 'adapt_sigma') and hasattr(self.es.adapt_sigma, 'ps'):
+            return self.es.adapt_sigma.ps.copy()
         else:
             # Jeśli wektor ps nie istnieje, zwróć wektor zerowy
             return np.zeros(self.dimension)
