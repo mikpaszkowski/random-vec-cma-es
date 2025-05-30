@@ -901,7 +901,7 @@ class ExperimentVisualizer:
                         generators=available['generators'],
                         show_individual=True,
                         show_statistics=True,
-                        save_plot=True
+                        save_plot=False
                     )
                     plt.close()  # Zamknij figurę aby zwolnić pamięć
                 except Exception as e:

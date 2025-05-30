@@ -22,7 +22,7 @@ from experiments.data_collector import DataCollector
 from experiments.config import (
     DEFAULT_DIMENSIONS, DEFAULT_FUNCTIONS, DEFAULT_ALGORITHMS, DEFAULT_GENERATORS,
     DEFAULT_SEEDS, DEFAULT_MAX_EVALUATIONS, DEFAULT_FTOL, DEFAULT_XTOL,
-    ACCURACY_THRESHOLDS, INITIAL_POINTS
+    ACCURACY_THRESHOLDS, INITIAL_POINTS, FUNCTION_SPECIFIC_TOLERANCES, get_initial_point
 )
 
 
@@ -59,22 +59,18 @@ class ExperimentRunner:
         Returns:
             Klasa algorytmu.
         """
-        if algorithm_name == 'standard':
+        if self.library == 'pycma':
+            if algorithm_name == 'standard':
+                return StandardCMAES
+            else:  # 'modified'
+                return ModifiedCMAES
+        elif self.library == 'cmaes':
+            if algorithm_name == 'standard':
                 return StandardCMAESLib
-        else:  # 'modified'
+            else:  # 'modified'
                 return ModifiedCMAESLib
-        # if self.library == 'pycma':
-        #     if algorithm_name == 'standard':
-        #         return StandardCMAES
-        #     else:  # 'modified'
-        #         return ModifiedCMAES
-        # elif self.library == 'cmaes':
-        #     if algorithm_name == 'standard':
-        #         return StandardCMAESLib
-        #     else:  # 'modified'
-        #         return ModifiedCMAESLib
-        # else:
-        #     raise ValueError(f"Nieznana biblioteka: {self.library}")
+        else:
+            raise ValueError(f"Nieznana biblioteka: {self.library}")
     
     def run_single_experiment(self, function_name, dimension, algorithm_name, 
                              generator_name, seed, **kwargs):
@@ -99,14 +95,18 @@ class ExperimentRunner:
             function = get_function(function_name, dimension)
             generator = get_generator(generator_name, seed)
             
-            # Wybór punktu początkowego
-            initial_mean = INITIAL_POINTS[function_name](dimension)
+            # Wybór punktu początkowego - używaj deterministycznego generatora
+            initial_mean = get_initial_point(function_name, dimension, generator)
             
             # Ustalenie parametrów
             initial_sigma = kwargs.get('initial_sigma', 1.0)
             max_evaluations = kwargs.get('max_evaluations', DEFAULT_MAX_EVALUATIONS)
-            ftol = kwargs.get('ftol', DEFAULT_FTOL)
-            xtol = kwargs.get('xtol', DEFAULT_XTOL)
+            
+            # Użyj specyficznych tolerancji dla funkcji jeśli dostępne
+            function_tolerances = FUNCTION_SPECIFIC_TOLERANCES.get(function_name, {})
+            ftol = kwargs.get('ftol', function_tolerances.get('ftol', DEFAULT_FTOL))
+            xtol = kwargs.get('xtol', function_tolerances.get('xtol', DEFAULT_XTOL))
+            
             convergence_interval = kwargs.get('convergence_interval', 100)
             
             # Utworzenie algorytmu - używanie odpowiedniej klasy na podstawie biblioteki

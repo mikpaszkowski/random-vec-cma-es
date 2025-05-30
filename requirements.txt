@@ -5,3 +5,4 @@ seaborn>=0.11.0
 cma>=3.0.0
 pandas>=1.1.0
 pcg-numpy>=1.0.0
+tabulate>=0.8.0

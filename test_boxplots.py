@@ -43,7 +43,7 @@ def main():
             dimension=dimension,
             algorithms=available['algorithms'],
             generators=available['generators'],
-            save_plot=True,
+            save_plot=False,
             figsize=(16, 12)
         )
         print("✓ Wykresy pudełkowe utworzone pomyślnie!")
@@ -54,11 +54,11 @@ def main():
         traceback.print_exc()
     
     # Test dla konkretnej funkcji jeśli dostępna
-    if 'ackley' in available['functions'] and 2 in available['dimensions']:
+    if 'rosenbrock' in available['functions'] and 2 in available['dimensions']:
         print("\n3. Test dla funkcji Ackley 2D...")
         try:
             visualizer.create_boxplots(
-                function='ackley',
+                function='rosenbrock',
                 dimension=2,
                 save_plot=True
             )
