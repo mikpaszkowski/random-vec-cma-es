@@ -307,32 +307,22 @@ def save_results(comparison_df, stats_df, output_dir, base_filename="algorithm_c
     print(f"Zapisano wyniki do: {output_dir}")
 
 
-def main():
-    """Główna funkcja skryptu."""
-    parser = argparse.ArgumentParser(
-        description="Generuje ogólną tabelę porównawczą Standard vs Modified CMA-ES"
-    )
-    parser.add_argument(
-        'results_dir',
-        help='Ścieżka do katalogu z wynikami eksperymentów'
-    )
-    parser.add_argument(
-        '--output-dir', '-o',
-        default='.',
-        help='Katalog docelowy dla tabel (domyślnie: bieżący katalog)'
-    )
-    parser.add_argument(
-        '--save', '-s',
-        action='store_true',
-        help='Zapisz wyniki do plików'
-    )
+def generate_comparison_table(results_dir='results/final', output_dir=None, save=False):
+    """
+    Generuje ogólną tabelę porównawczą Standard vs Modified CMA-ES.
     
-    args = parser.parse_args()
-    
+    Args:
+        results_dir: Ścieżka do katalogu z wynikami eksperymentów
+        output_dir: Katalog docelowy dla tabel (domyślnie: results_dir)
+        save: Czy zapisać wyniki do plików
+    """
+    if output_dir is None:
+        output_dir = results_dir
+        
     try:
         # Wczytanie danych
-        print(f"Wczytywanie danych z: {args.results_dir}")
-        experiments = load_experiment_data(args.results_dir)
+        print(f"Wczytywanie danych z: {results_dir}")
+        experiments = load_experiment_data(results_dir)
         
         if not experiments:
             print("Nie znaleziono danych eksperymentów!")
@@ -367,8 +357,8 @@ def main():
         print(tabulate(stats_df, headers='keys', tablefmt='grid', showindex=False))
         
         # Zapisanie wyników jeśli wymagane
-        if args.save:
-            save_results(comparison_df, stats_df, args.output_dir)
+        if save:
+            save_results(comparison_df, stats_df, output_dir)
         
         # Podsumowanie zwycięstw
         winners = comparison_df['Zwycięzca'].value_counts()
@@ -385,6 +375,34 @@ def main():
         import traceback
         traceback.print_exc()
         return 1
+
+
+def main():
+    """Główna funkcja dla uruchomienia z linii poleceń."""
+    parser = argparse.ArgumentParser(
+        description="Generuje ogólną tabelę porównawczą Standard vs Modified CMA-ES"
+    )
+    parser.add_argument(
+        'results_dir',
+        help='Ścieżka do katalogu z wynikami eksperymentów'
+    )
+    parser.add_argument(
+        '--output-dir', '-o',
+        help='Katalog docelowy dla tabel (domyślnie: results_dir)'
+    )
+    parser.add_argument(
+        '--save', '-s',
+        action='store_true',
+        help='Zapisz wyniki do plików'
+    )
+    
+    args = parser.parse_args()
+    
+    return generate_comparison_table(
+        results_dir=args.results_dir,
+        output_dir=args.output_dir,
+        save=args.save
+    )
 
 
 if __name__ == "__main__":

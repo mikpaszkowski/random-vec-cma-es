@@ -17,7 +17,7 @@ try:
 except ImportError:
     from utils.visualization import ExperimentVisualizer
 
-def main(dirname="final"):
+def create_comparative_plots(dirname="final"):
     """Test nowej funkcjonalności zbiorczych wykresów porównawczych"""
     
     print("=== Test zbiorczych wykresów porównawczych ===")
@@ -63,4 +63,4 @@ def main(dirname="final"):
     print(f"\nWykresy zapisane w katalogu: {viz.convergence_plots_dir}")
 
 if __name__ == "__main__":
-    main("final") 
+    create_comparative_plots("final") 

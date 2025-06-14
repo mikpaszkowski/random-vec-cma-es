@@ -17,7 +17,7 @@ try:
 except ImportError:
     from utils.visualization import ExperimentVisualizer
 
-def main(dirname="final"):
+def create_individual_sigma_plots(dirname="final"):
     """Test nowej funkcjonalności osobnych wykresów ewolucji sigma dla każdej funkcji testowej"""
     
     print("=== Test osobnych wykresów ewolucji sigma dla każdej funkcji ===")
@@ -105,43 +105,6 @@ def main(dirname="final"):
         for file in sorted(sigma_dir.glob("*.png")):
             print(f"  - {file.name}")
 
-def demo_sigma_comparison():
-    """Demonstracja porównania ewolucji sigma między algorytmami"""
-    
-    print("\n" + "="*60)
-    print("DEMONSTRACJA: Porównanie ewolucji sigma między algorytmami")
-    print("="*60)
-    
-    viz = ExperimentVisualizer(results_dir="results/final")
-    available = viz.get_available_experiments()
-    
-    if not available['functions']:
-        print("Brak dostępnych danych do demonstracji")
-        return
-    
-    # Wybierz pierwszą dostępną funkcję i wymiar
-    demo_function = available['functions'][0]
-    demo_dimension = available['dimensions'][0] if available['dimensions'] else None
-    
-    if demo_dimension:
-        print(f"Tworzenie wykresu porównawczego sigma dla: {demo_function} {demo_dimension}D")
-        print("Ten wykres pokazuje:")
-        print("  - Standard CMA-ES (niebieska linia ciągła)")
-        print("  - Modified CMA-ES (czerwona linia przerywana)")
-        print("  - Dane uśrednione z generatorów MT i PCG")
-        print("  - Mediana z przedziałem kwartylowym")
-        
-        try:
-            viz.create_individual_function_sigma_plots(
-                dimension=demo_dimension,
-                functions=[demo_function],
-                save_plot=True,
-                figsize=(14, 8)
-            )
-            print("✓ Wykres demonstracyjny utworzony pomyślnie!")
-        except Exception as e:
-            print(f"✗ Błąd podczas tworzenia wykresu demonstracyjnego: {e}")
-
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='Test individual function sigma evolution plots')
@@ -149,7 +112,4 @@ if __name__ == "__main__":
     parser.add_argument('--demo', action='store_true', help='Run demonstration of sigma comparison')
     args = parser.parse_args()
     
-    main(args.dirname)
-    
-    if args.demo:
-        demo_sigma_comparison() 
+    create_individual_sigma_plots(args.dirname)

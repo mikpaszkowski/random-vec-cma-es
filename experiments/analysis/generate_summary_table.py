@@ -204,38 +204,23 @@ def save_results(df, output_dir, base_filename="summary_table"):
     print(f"Zapisano tekst: {txt_path}")
 
 
-def main():
-    """Główna funkcja skryptu."""
-    parser = argparse.ArgumentParser(
-        description="Generuje tabelę podsumowującą jakość rozwiązań"
-    )
-    parser.add_argument(
-        'results_dir',
-        help='Ścieżka do katalogu z wynikami eksperymentów'
-    )
-    parser.add_argument(
-        '--output-dir', '-o',
-        default='.',
-        help='Katalog docelowy dla tabel (domyślnie: bieżący katalog)'
-    )
-    parser.add_argument(
-        '--format', '-f',
-        choices=['grid', 'markdown', 'latex', 'simple', 'github'],
-        default='grid',
-        help='Format wyświetlania tabeli (domyślnie: grid)'
-    )
-    parser.add_argument(
-        '--save', '-s',
-        action='store_true',
-        help='Zapisz wyniki do plików'
-    )
+def generate_summary_table(results_dir='results/final', output_dir=None, format_type='grid', save=False):
+    """
+    Generuje tabelę podsumowującą jakość rozwiązań.
     
-    args = parser.parse_args()
-    
+    Args:
+        results_dir: Ścieżka do katalogu z wynikami eksperymentów
+        output_dir: Katalog docelowy dla tabel (domyślnie: results_dir)
+        format_type: Format wyświetlania tabeli
+        save: Czy zapisać wyniki do plików
+    """
+    if output_dir is None:
+        output_dir = results_dir
+        
     try:
         # Wczytanie danych
-        print(f"Wczytywanie danych z: {args.results_dir}")
-        experiments = load_experiment_data(args.results_dir)
+        print(f"Wczytywanie danych z: {results_dir}")
+        experiments = load_experiment_data(results_dir)
         
         if not experiments:
             print("Nie znaleziono danych eksperymentów!")
@@ -252,13 +237,13 @@ def main():
         # Wyświetlenie tabeli
         print(f"\nTabela podsumowująca jakość rozwiązań:")
         print("=" * 80)
-        table = create_formatted_table(summary_df, args.format)
+        table = create_formatted_table(summary_df, format_type)
         print(table)
         
         # Zapisanie wyników jeśli wymagane
-        if args.save:
-            print(f"\nZapisywanie wyników do: {args.output_dir}")
-            save_results(summary_df, args.output_dir)
+        if save:
+            print(f"\nZapisywanie wyników do: {output_dir}")
+            save_results(summary_df, output_dir)
         
         # Dodatkowe statystyki
         print(f"\nPodsumowanie:")
@@ -275,6 +260,41 @@ def main():
         import traceback
         traceback.print_exc()
         return 1
+
+
+def main():
+    """Główna funkcja dla uruchomienia z linii poleceń."""
+    parser = argparse.ArgumentParser(
+        description="Generuje tabelę podsumowującą jakość rozwiązań"
+    )
+    parser.add_argument(
+        'results_dir',
+        help='Ścieżka do katalogu z wynikami eksperymentów'
+    )
+    parser.add_argument(
+        '--output-dir', '-o',
+        help='Katalog docelowy dla tabel (domyślnie: results_dir)'
+    )
+    parser.add_argument(
+        '--format', '-f',
+        choices=['grid', 'markdown', 'latex', 'simple', 'github'],
+        default='grid',
+        help='Format wyświetlania tabeli (domyślnie: grid)'
+    )
+    parser.add_argument(
+        '--save', '-s',
+        action='store_true',
+        help='Zapisz wyniki do plików'
+    )
+    
+    args = parser.parse_args()
+    
+    return generate_summary_table(
+        results_dir=args.results_dir,
+        output_dir=args.output_dir,
+        format_type=args.format,
+        save=args.save
+    )
 
 
 if __name__ == "__main__":

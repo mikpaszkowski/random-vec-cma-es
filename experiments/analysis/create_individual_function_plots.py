@@ -17,7 +17,7 @@ try:
 except ImportError:
     from utils.visualization import ExperimentVisualizer
 
-def main(dirname="final"):
+def create_individual_function_plots(dirname="final"):
     """Test nowej funkcjonalności osobnych wykresów dla każdej funkcji testowej"""
     
     print("=== Test osobnych wykresów zbieżności i sigma dla każdej funkcji ===")
@@ -131,4 +131,4 @@ if __name__ == "__main__":
     parser.add_argument('--dirname', default='final', help='Results directory name')
     args = parser.parse_args()
     
-    main(args.dirname) 
+    create_individual_function_plots(args.dirname) 

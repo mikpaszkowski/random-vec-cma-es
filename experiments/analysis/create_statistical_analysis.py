@@ -283,8 +283,8 @@ class SimpleStatisticalAnalysis:
                 ax4.set_title('Który algorytm wygrywa częściej')
         
         plt.tight_layout()
-        plt.savefig('statistical_analysis_plots.png', dpi=300, bbox_inches='tight')
-        plt.show()
+        plt.savefig('results/final/statistical_analysis_plots.png', dpi=300, bbox_inches='tight')
+        plt.close()
         
         print("📊 Wykres zapisany jako: statistical_analysis_plots.png")
     
@@ -364,7 +364,7 @@ class SimpleStatisticalAnalysis:
                 print(f"   Effect size (Cohen's d): {row['cohen_d']:.3f}")
         
         # Zapisz wyniki do CSV
-        output_file = 'statistical_analysis_results.csv'
+        output_file = 'results/final/statistical_analysis_results.csv'
         results_df.to_csv(output_file, index=False)
         print(f"\n💾 Wyniki zapisane do: {output_file}")
     
