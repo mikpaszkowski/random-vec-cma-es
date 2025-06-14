@@ -100,7 +100,8 @@ class StandardCMAES:
                 ftol: float = 1e-8, 
                 xtol: float = 1e-8, 
                 verbose: bool = False,
-                convergence_interval: int = 100) -> Dict[str, Any]:
+                convergence_interval: int = 100,
+                ftarget_stop: Optional[float] = None) -> Dict[str, Any]:
         """
         Przeprowadza pełną optymalizację.
         
@@ -110,6 +111,7 @@ class StandardCMAES:
             xtol: Tolerancja zbieżności dla parametrów.
             verbose: Czy wyświetlać postęp optymalizacji.
             convergence_interval: Odstęp między zapisywaniem danych do krzywej zbieżności.
+            ftarget_stop: Wartość funkcji celu, która powoduje zatrzymanie optymalizacji.
         
         Returns:
             Słownik z wynikami optymalizacji.
@@ -125,10 +127,23 @@ class StandardCMAES:
         options['maxfevals'] = max_evaluations
         options['tolfun'] = ftol  # Używamy wbudowanej tolerancji funkcji CMA-ES
         options['tolx'] = xtol    # Używamy wbudowanej tolerancji parametrów CMA-ES
+        
+        # Ustawienia verbosity - kontroluje komunikaty konsolowe
         if verbose:
             options['verbose'] = 1
         else:
-            options['verbose'] = -9  # Wyłącz wszystkie komunikaty
+            options['verbose'] = -9  # Wyłącz komunikaty konsolowe
+
+        # KLUCZOWE: Zawsze włącz logowanie plików dla wykresów
+        # Te opcje są niezależne od 'verbose' i kontrolują zapisywanie danych do plików
+        # WAŻNE: Ustawiamy te opcje PO ustawieniu verbose, aby nie zostały nadpisane
+        options['verb_log'] = 1  # Poziom logowania do plików (1 = każda iteracja)
+        options['verb_filenameprefix'] = 'outcmaes/'  # Katalog i prefix plików
+        options['verb_disp'] = 1  # Wyświetlaj informacje co iterację (może pomóc z logowaniem)
+        options['verb_time'] = True  # Dodatkowe informacje o czasie
+        
+        if ftarget_stop is not None:
+            options['ftarget'] = ftarget_stop
         
         # Inicjalizacja obiektu CMAEvolutionStrategy od nowa z nowymi opcjami
         self.es = cma.CMAEvolutionStrategy(
@@ -136,6 +151,10 @@ class StandardCMAES:
             self.initial_sigma, 
             inopts=options
         )
+        
+        # WYMUSZENIE: Upewnij się że verb_log jest ustawione poprawnie po inicjalizacji
+        self.es.opts['verb_log'] = 1
+        self.es.opts['verb_filenameprefix'] = 'outcmaes/'
         
         # Przygotuj dane do śledzenia zbieżności
         convergence_data = []
@@ -151,6 +170,14 @@ class StandardCMAES:
             
             # Aktualizuj stan algorytmu
             self.tell(solutions, fitnesses)
+            
+            # KLUCZOWE: Zapisz dane do plików w każdej iteracji
+            if hasattr(self.es, 'logger') and self.es.logger:
+                try:
+                    self.es.logger.add()  # To jest klucz do zapisywania danych co iterację!
+                except Exception as log_error:
+                    if verbose:
+                        print(f"Ostrzeżenie: Problem z logowaniem w iteracji {self.iterations}: {log_error}")
             
             # Zapisz dane zbieżności
             should_save = (
@@ -171,6 +198,11 @@ class StandardCMAES:
             if verbose and self.iterations % 10 == 0:
                 print(f"Iteracja {self.iterations}, ewaluacje {self.evaluations}, "
                       f"najlepsza wartość {self.best_fitness:.6e}, sigma {self.es.sigma:.6e}")
+            
+            if ftarget_stop is not None and self.best_fitness <= ftarget_stop:
+                if verbose:
+                    print(f"Zatrzymano: osiągnięto docelową wartość funkcji {ftarget_stop}")
+                break
         
         # Komunikat o powodach zatrzymania
         if verbose:
@@ -186,6 +218,27 @@ class StandardCMAES:
                 'best_fitness': float(self.best_fitness),
                 'sigma': float(self.es.sigma)
             })
+        
+        # KLUCZOWE: Zapisz dane logowania do plików (wywoła to również tworzenie katalogu outcmaes)
+        try:
+            if hasattr(self.es, 'logger') and self.es.logger:
+                # Zapisz dane do plików - to tworzy katalog outcmaes i wszystkie pliki danych
+                self.es.logger.save()
+                # Możemy też dodać informacje o zakończeniu
+                if hasattr(self.es.logger, 'add'):
+                    self.es.logger.add()
+                    
+                if verbose:
+                    import os
+                    if os.path.exists('outcmaes'):
+                        print(f"Katalog outcmaes został utworzony z plikami: {os.listdir('outcmaes')}")
+                    else:
+                        print("Ostrzeżenie: Katalog outcmaes nie został utworzony pomimo wywołania logger.save()")
+        except Exception as e:
+            # ZAWSZE pokaż błędy logowania, niezależnie od verbose
+            print(f"Ostrzeżenie: Nie udało się zapisać danych logowania: {e}")
+            import traceback
+            print(f"Szczegóły błędu: {traceback.format_exc()}")
         
         # Dodaj punkt początkowy na początku listy, ale tylko jeśli mamy rzeczywiste dane
         if convergence_data and self.best_fitness != float('inf'):
@@ -224,3 +277,30 @@ class StandardCMAES:
         else:
             # Jeśli wektor ps nie istnieje (przed pierwszą iteracją), zwróć wektor zerowy
             return np.zeros(self.dimension)
+
+    def plot(self, **kwargs) -> None:
+        """
+        Generuje standardowe wykresy CMA-ES przy użyciu metody plot() z obiektu CMAEvolutionStrategy.
+        Wymaga, aby optymalizacja została wcześniej uruchomiona.
+        Dane do wykresów są zazwyczaj wczytywane z katalogu 'outcmaes/'.
+        
+        Args:
+            **kwargs: Dodatkowe argumenty przekazywane do metody `self.es.plot()`.
+                      Pozwala na customizację wykresów zgodnie z opcjami pycma.
+                      Na przykład: `fig=None`, `iabscissa=0`, `iteridx=-1`, `x_opt=None`, `f_opt=None`, `ax=None` etc.
+        
+        Raises:
+            AttributeError: Jeśli metoda `optimize` nie została jeszcze wywołana lub obiekt `self.es` nie istnieje.
+            Exception: Jeśli `pycma` napotka problem podczas generowania wykresu (np. brak danych).
+        """
+        if not hasattr(self, 'es') or self.es is None:
+            raise AttributeError("Obiekt CMAEvolutionStrategy 'es' nie istnieje. "
+                                 "Uruchom najpierw metodę 'optimize'.")
+        
+        print("Generowanie wykresów CMA-ES. Dane są zazwyczaj wczytywane z katalogu 'outcmaes/'...")
+        try:
+            self.es.result_pretty()
+            self.es.plot(**kwargs)
+        except Exception as e:
+            print(f"Wystąpił błąd podczas generowania wykresów: {e}")
+            print("Upewnij się, że optymalizacja została przeprowadzona i dane zostały zapisane (zwykle w 'outcmaes/').")

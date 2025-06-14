@@ -15,14 +15,15 @@ from datetime import datetime
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import komponentów projektu
-from algorithms import StandardCMAES, ModifiedCMAES, StandardCMAESLib, ModifiedCMAESLib
+from algorithms import StandardCMAES, ModifiedCMAES
 from functions import get_function
 from generators import get_generator
 from experiments.data_collector import DataCollector
 from experiments.config import (
     DEFAULT_DIMENSIONS, DEFAULT_FUNCTIONS, DEFAULT_ALGORITHMS, DEFAULT_GENERATORS,
     DEFAULT_SEEDS, DEFAULT_MAX_EVALUATIONS, DEFAULT_FTOL, DEFAULT_XTOL,
-    ACCURACY_THRESHOLDS, INITIAL_POINTS, FUNCTION_SPECIFIC_TOLERANCES, get_initial_point
+    ACCURACY_THRESHOLDS, FUNCTION_SPECIFIC_TOLERANCES, get_initial_point,
+    get_ftarget_stop_value
 )
 
 
@@ -64,11 +65,6 @@ class ExperimentRunner:
                 return StandardCMAES
             else:  # 'modified'
                 return ModifiedCMAES
-        elif self.library == 'cmaes':
-            if algorithm_name == 'standard':
-                return StandardCMAESLib
-            else:  # 'modified'
-                return ModifiedCMAESLib
         else:
             raise ValueError(f"Nieznana biblioteka: {self.library}")
     
@@ -102,6 +98,9 @@ class ExperimentRunner:
             initial_sigma = kwargs.get('initial_sigma', 1.0)
             max_evaluations = kwargs.get('max_evaluations', DEFAULT_MAX_EVALUATIONS)
             
+            # Pobranie wartości ftarget_stop_value
+            ftarget_stop = get_ftarget_stop_value(function_name, dimension)
+            
             # Użyj specyficznych tolerancji dla funkcji jeśli dostępne
             function_tolerances = FUNCTION_SPECIFIC_TOLERANCES.get(function_name, {})
             ftol = kwargs.get('ftol', function_tolerances.get('ftol', DEFAULT_FTOL))
@@ -115,7 +114,8 @@ class ExperimentRunner:
                 function,
                 initial_mean=initial_mean,
                 initial_sigma=initial_sigma,
-                random_generator=generator
+                random_generator=generator,
+                population_size=kwargs.get('population_size', None)
             )
                 
             # Zapis początkowej wartości ps - BEZPOŚREDNIO po utworzeniu algorytmu
@@ -128,6 +128,7 @@ class ExperimentRunner:
                 max_evaluations=max_evaluations,
                 ftol=ftol,
                 xtol=xtol,
+                ftarget_stop=ftarget_stop,
                 verbose=False,
                 convergence_interval=convergence_interval
             )
@@ -164,6 +165,7 @@ class ExperimentRunner:
             
             # Zapisanie wyników
             self.data_collector.save_experiment_result(experiment_data)
+            # algorithm.plot()
             
             return experiment_data
             
@@ -209,7 +211,7 @@ class ExperimentRunner:
                 'max_evaluations': kwargs.get('max_evaluations', DEFAULT_MAX_EVALUATIONS),
                 'ftol': kwargs.get('ftol', DEFAULT_FTOL),
                 'xtol': kwargs.get('xtol', DEFAULT_XTOL),
-                'start_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                'start_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             }
             json.dump(config, f, indent=2)
         

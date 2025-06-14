@@ -5,7 +5,34 @@
 Test skryptu dla nowej funkcjonalności wykresów pudełkowych w klasie ExperimentVisualizer.
 """
 
-from experiments.utils.visualization import ExperimentVisualizer
+import sys
+import os
+from pathlib import Path
+
+# Add parent directories to path when running directly
+if __name__ == "__main__":
+    current_dir = Path(__file__).parent
+    experiments_dir = current_dir.parent
+    root_dir = experiments_dir.parent
+    
+    for path in [str(root_dir), str(experiments_dir)]:
+        if path not in sys.path:
+            sys.path.insert(0, path)
+
+# Try to import from experiments package, fallback to direct import
+try:
+    from experiments.utils.visualization import ExperimentVisualizer
+except ImportError:
+    try:
+        from utils.visualization import ExperimentVisualizer
+    except ImportError:
+        # Last resort - add utils directory to path
+        utils_dir = Path(__file__).parent.parent / "utils"
+        if utils_dir.exists():
+            sys.path.insert(0, str(utils_dir))
+            from visualization import ExperimentVisualizer
+        else:
+            raise ImportError("Cannot find ExperimentVisualizer module")
 
 def main():
     """

@@ -19,6 +19,9 @@ DEFAULT_FTOL = 1e-9  # Zmniejszone z 1e-6 dla większej cierpliwości w funkcjac
 DEFAULT_XTOL = 1e-9  # Zmniejszone z 1e-6 dla większej cierpliwości
 DEFAULT_INITIAL_SIGMA = 2.0  # Zwiększone z 1.0 dla lepszej eksploracji
 
+# Przedziały odstępu między zapisywaniem danych zbieżności (co ile ewaluacji)
+CONVERGENCE_INTERVAL = 50 
+
 # Tolerancje specyficzne dla różnych funkcji
 FUNCTION_SPECIFIC_TOLERANCES = {
     'rosenbrock': {'ftol': 1e-8, 'xtol': 1e-8},
@@ -97,13 +100,30 @@ def get_initial_point(function_name: str, dimension: int, random_generator=None)
         # Fallback dla nieznanych funkcji
         return np.zeros(dimension)
 
-# Stare INITIAL_POINTS pozostaje dla kompatybilności wstecznej
-INITIAL_POINTS = {
-    'rosenbrock': lambda dim: np.full(dim, -2.0),
-    'rastrigin': lambda dim: np.random.uniform(-2.0, 2.0, dim),  # Losowe punkty zamiast [2,2,...,2]
-    'ackley': lambda dim: np.random.uniform(-15.0, 15.0, dim),   # Losowe punkty w szerszym zakresie
-    'schwefel': lambda dim: np.random.uniform(300.0, 500.0, dim)  # Bliżej optimum (~421)
-}
+def get_ftarget_stop_value(function_name: str, dimension: int) -> float | None:
+    """
+    Zwraca docelową wartość funkcji celu (ftarget), przy której algorytm powinien się zatrzymać,
+    dla danej funkcji i jej wymiarowości.
 
-# Przedziały odstępu między zapisywaniem danych zbieżności (co ile ewaluacji)
-CONVERGENCE_INTERVAL = 50 
+    Args:
+        function_name: Nazwa funkcji testowej.
+        dimension: Wymiarowość problemu.
+
+    Returns:
+        Wartość ftarget lub None, jeśli nie zdefiniowano dla danej funkcji.
+    """
+    if function_name == 'rosenbrock':
+        return 1e-8
+    elif function_name == 'rastrigin':
+        return 1e-4
+    elif function_name == 'ackley':
+        return 1e-5
+    elif function_name == 'schwefel':
+        # Globalne minimum dla Schwefela (w zakresie [-500, 500]) to ok. -dimension * 418.9829
+        # Chcemy być blisko tego minimum, np. z dokładnością 0.01
+        return -dimension * 418.9829 + 0.01
+    else:
+        # Można tu zwrócić domyślną wartość, None, lub zgłosić błąd
+        # dla nieznanych funkcji, w zależności od potrzeb.
+        print(f"Ostrzeżenie: Nie zdefiniowano ftarget dla funkcji '{function_name}'.")
+        return None

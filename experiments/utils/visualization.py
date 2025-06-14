@@ -754,8 +754,10 @@ class ExperimentVisualizer:
             filepath = self.convergence_plots_dir / filename
             plt.savefig(filepath, dpi=300, bbox_inches='tight')
             print(f"Zapisano wykres: {filepath}")
-        
-        plt.show()
+        else:
+            plt.show()
+            
+        plt.close()
     
     def _plot_convergence_statistics(self, ax, conv_data: List[Dict], color: str, label: str) -> None:
         """
@@ -955,4 +957,594 @@ class ExperimentVisualizer:
         except Exception as e:
             print(f"Błąd podczas tworzenia wykresów wskaźników sukcesu: {e}")
         
-        print(f"Wykresy wskaźników sukcesu zapisane w katalogu: {self.success_rate_plots_dir}") 
+        print(f"Wykresy wskaźników sukcesu zapisane w katalogu: {self.success_rate_plots_dir}")
+    
+    def create_comparative_convergence_plot(self, dimension: int = None,
+                                          save_plot: bool = True,
+                                          figsize: Tuple[int, int] = (16, 12)) -> None:
+        """
+        Tworzy zbiorcze wykresy porównawcze zbieżności dla wszystkich funkcji i algorytmów.
+        Uśrednia wyniki dla różnych generatorów (pcg, mt).
+        
+        Args:
+            dimension: Wymiar do analizy (jeśli None, tworzy osobne wykresy dla każdego wymiaru)
+            save_plot: Czy zapisać wykres, je
+            figsize: Rozmiar figury
+        """
+        available = self.get_available_experiments()
+        functions = available['functions']
+        algorithms = available['algorithms']
+        dimensions = available['dimensions']
+        
+        if not functions or not algorithms:
+            print("Błąd: Brak dostępnych danych do analizy!")
+            return
+        
+        # Jeśli nie podano wymiaru, utwórz wykresy dla każdego dostępnego wymiaru
+        if dimension is None:
+            for dim in dimensions:
+                self.create_comparative_convergence_plot(dimension=dim, save_plot=save_plot, figsize=figsize)
+            return
+        
+        print(f"Tworzenie zbiorczego wykresu porównawczego dla wymiaru {dimension}D...")
+        
+        # Przygotuj wykres
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # Kolory dla funkcji
+        function_colors = {
+            'rastrigin': '#1f77b4',    # Niebieski
+            'schwefel': '#ff7f0e',     # Pomarańczowy
+            'rosenbrock': '#2ca02c',   # Zielony
+            'ackley': '#d62728'        # Czerwony
+        }
+        
+        # Style linii dla algorytmów
+        algorithm_styles = {
+            'standard': '-',   # Linia ciągła
+            'modified': '--'   # Linia przerywana
+        }
+        
+        all_data_found = False
+        
+        # Dla każdej kombinacji funkcji i algorytmu
+        for function in functions:
+            for algorithm in algorithms:
+                print(f"Przetwarzam: {function} {dimension}D {algorithm}")
+                
+                # Zbierz dane z obu generatorów (mt i pcg)
+                combined_conv_data = []
+                
+                for generator in ['mt', 'pcg']:
+                    conv_data = self._load_convergence_data(
+                        function=function,
+                        dimension=dimension,
+                        algorithm=algorithm,
+                        generator=generator
+                    )
+                    combined_conv_data.extend(conv_data)
+                
+                if combined_conv_data:
+                    all_data_found = True
+                    
+                    # Utwórz etykietę
+                    label = f"{function.capitalize()} {algorithm}"
+                    
+                    # Pobierz kolor i styl
+                    color = function_colors.get(function, '#333333')
+                    linestyle = algorithm_styles.get(algorithm, '-')
+                    
+                    # Narysuj średnią krzywą zbieżności
+                    self._plot_convergence_statistics_comparative(
+                        ax, combined_conv_data, color, label, linestyle
+                    )
+        
+        if not all_data_found:
+            print(f"Brak danych dla wymiaru {dimension}D!")
+            plt.close(fig)
+            return
+        
+        # Formatowanie wykresu
+        ax.set_xlabel('Liczba ewaluacji funkcji', fontsize=14)
+        ax.set_ylabel('Najlepsze fitness (skala log)', fontsize=14)
+        ax.set_title(f'Porównanie zbieżności algorytmów CMA-ES - {dimension}D', fontsize=16)
+        ax.grid(True, alpha=0.3)
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
+        
+        # Ustaw skalę logarytmiczną
+        ax.set_yscale('log')
+        ax.set_ylim(bottom=1e-10)
+        
+        plt.tight_layout()
+        
+        if save_plot:
+            output_filename = f"comparative_convergence_{dimension}D.png"
+            output_path = self.convergence_plots_dir / output_filename
+            plt.savefig(output_path, dpi=300, bbox_inches='tight')
+            print(f"Wykres zapisano jako: {output_path}")
+        else:
+            plt.show()
+        plt.close()
+    
+    def _plot_convergence_statistics_comparative(self, ax, conv_data: List[Dict], 
+                                               color: str, label: str, linestyle: str) -> None:
+        """
+        Rysuje statystyki zbieżności dla porównawczego wykresu.
+        
+        Args:
+            ax: Obiekt osi matplotlib
+            conv_data: Lista danych zbieżności
+            color: Kolor linii
+            label: Etykieta dla legendy
+            linestyle: Styl linii
+        """
+        if not conv_data:
+            return
+        
+        # Znajdź wspólną siatkę punktów ewaluacji
+        all_evaluations = []
+        for data in conv_data:
+            all_evaluations.extend(data['evaluations'])
+        
+        if not all_evaluations:
+            return
+        
+        # Utwórz regularną siatkę ewaluacji
+        min_eval = min(all_evaluations)
+        max_eval = max(all_evaluations)
+        common_evals = np.linspace(min_eval, max_eval, 100)
+        
+        # Interpoluj dane na wspólną siatkę
+        interpolated_fitness = []
+        
+        for data in conv_data:
+            if len(data['evaluations']) < 2:
+                continue
+                
+            try:
+                # Interpolacja liniowa
+                interpolated = np.interp(common_evals, data['evaluations'], data['best_fitness'])
+                interpolated_fitness.append(interpolated)
+                
+            except Exception as e:
+                print(f"Błąd interpolacji: {e}")
+                continue
+        
+        if len(interpolated_fitness) > 0:
+            interpolated_fitness = np.array(interpolated_fitness)
+            
+            # Oblicz medianę
+            median_fitness = np.median(interpolated_fitness, axis=0)
+            q25_fitness = np.percentile(interpolated_fitness, 25, axis=0)
+            q75_fitness = np.percentile(interpolated_fitness, 75, axis=0)
+            
+            # Filtruj prawidłowe punkty
+            valid_mask = (
+                np.isfinite(median_fitness) & 
+                (median_fitness > 0)
+            )
+            
+            if np.any(valid_mask):
+                valid_evals = common_evals[valid_mask]
+                valid_median = median_fitness[valid_mask]
+                valid_q25 = q25_fitness[valid_mask]
+                valid_q75 = q75_fitness[valid_mask]
+                
+                # Rysuj medianę
+                ax.plot(valid_evals, valid_median, color=color, linewidth=2.5, 
+                       linestyle=linestyle, label=label)
+                
+                # Rysuj przedział kwartylowy (opcjonalnie)
+                ax.fill_between(valid_evals, 
+                               np.maximum(valid_q25, np.full_like(valid_q25, 1e-12)),
+                               valid_q75,
+                               color=color, alpha=0.15)
+    
+    def create_individual_function_convergence_plots(self, dimension: int = None,
+                                                   functions: Optional[List[str]] = None,
+                                                   algorithms: Optional[List[str]] = None,
+                                                   save_plot: bool = True,
+                                                   figsize: Tuple[int, int] = (12, 8)) -> None:
+        """
+        Tworzy osobne wykresy porównawcze zbieżności dla każdej funkcji testowej.
+        Każdy wykres pokazuje porównanie algorytmów (standard vs modified) dla jednej funkcji,
+        uśredniając wyniki dla różnych generatorów (pcg, mt).
+        
+        Args:
+            dimension: Wymiar do analizy (jeśli None, tworzy wykresy dla każdego dostępnego wymiaru)
+            functions: Lista funkcji do analizy (jeśli None, używa wszystkich dostępnych)
+            algorithms: Lista algorytmów do porównania (domyślnie ['standard', 'modified'])
+            save_plot: Czy zapisać wykresy
+            figsize: Rozmiar figury dla każdego wykresu
+        """
+        available = self.get_available_experiments()
+        available_functions = functions if functions is not None else available['functions']
+        available_algorithms = algorithms if algorithms is not None else available['algorithms']
+        dimensions = available['dimensions']
+        
+        if not available_functions or not available_algorithms:
+            print("Błąd: Brak dostępnych danych do analizy!")
+            return
+        
+        # Jeśli nie podano wymiaru, utwórz wykresy dla każdego dostępnego wymiaru
+        if dimension is None:
+            for dim in dimensions:
+                self.create_individual_function_convergence_plots(
+                    dimension=dim, 
+                    functions=functions, 
+                    algorithms=algorithms,
+                    save_plot=save_plot, 
+                    figsize=figsize
+                )
+            return
+        
+        print(f"Tworzenie osobnych wykresów zbieżności dla wymiaru {dimension}D...")
+        
+        # Kolory dla algorytmów
+        algorithm_colors = {
+            'standard': '#1f77b4',    # Niebieski
+            'modified': '#d62728'     # Czerwony
+        }
+        
+        # Style linii dla algorytmów
+        algorithm_styles = {
+            'standard': '-',   # Linia ciągła
+            'modified': '--'   # Linia przerywana
+        }
+        
+        # Utwórz osobny wykres dla każdej funkcji
+        for function in available_functions:
+            print(f"Tworzenie wykresu dla funkcji: {function} {dimension}D")
+            
+            fig, ax = plt.subplots(figsize=figsize)
+            any_data_found = False
+            
+            # Dla każdego algorytmu
+            for algorithm in available_algorithms:
+                print(f"  Przetwarzam algorytm: {algorithm}")
+                
+                # Zbierz dane z obu generatorów (mt i pcg)
+                combined_conv_data = []
+                
+                for generator in ['mt', 'pcg']:
+                    conv_data = self._load_convergence_data(
+                        function=function,
+                        dimension=dimension,
+                        algorithm=algorithm,
+                        generator=generator
+                    )
+                    combined_conv_data.extend(conv_data)
+                
+                if combined_conv_data:
+                    any_data_found = True
+                    
+                    # Utwórz etykietę
+                    label = f"{algorithm.capitalize()} CMA-ES"
+                    
+                    # Pobierz kolor i styl
+                    color = algorithm_colors.get(algorithm, '#333333')
+                    linestyle = algorithm_styles.get(algorithm, '-')
+                    
+                    # Narysuj średnią krzywą zbieżności
+                    self._plot_convergence_statistics_comparative(
+                        ax, combined_conv_data, color, label, linestyle
+                    )
+                else:
+                    print(f"    Brak danych dla {algorithm}")
+            
+            if not any_data_found:
+                print(f"  Brak danych dla funkcji {function} {dimension}D!")
+                plt.close(fig)
+                continue
+            
+            # Formatowanie wykresu
+            ax.set_xlabel('Liczba ewaluacji funkcji', fontsize=12)
+            ax.set_ylabel('Najlepsze fitness (skala log)', fontsize=12)
+            ax.set_title(f'Porównanie zbieżności CMA-ES - {function.capitalize()} {dimension}D', fontsize=14)
+            ax.grid(True, alpha=0.3)
+            ax.legend(fontsize=11)
+            
+            # Ustaw skalę logarytmiczną
+            ax.set_yscale('log')
+            ax.set_ylim(bottom=1e-10)
+            
+            plt.tight_layout()
+            
+            if save_plot:
+                # Utwórz katalog dla pojedynczych funkcji jeśli nie istnieje
+                individual_plots_dir = self.convergence_plots_dir / "individual_functions"
+                individual_plots_dir.mkdir(exist_ok=True)
+                
+                output_filename = f"{function}_convergence_{dimension}D.png"
+                output_path = individual_plots_dir / output_filename
+                plt.savefig(output_path, dpi=300, bbox_inches='tight')
+                print(f"  Wykres zapisano jako: {output_path}")
+            else:
+                plt.show()
+            plt.close(fig)  # Zamknij figurę aby zwolnić pamięć
+    
+    def create_all_individual_function_plots(self) -> None:
+        """
+        Tworzy wszystkie osobne wykresy zbieżności dla każdej funkcji testowej.
+        """
+        available = self.get_available_experiments()
+        
+        print("Tworzenie osobnych wykresów zbieżności dla każdej funkcji...")
+        print(f"Dostępne eksperymenty: {available}")
+        
+        # Utwórz osobne wykresy dla każdego wymiaru
+        for dimension in available['dimensions']:
+            try:
+                self.create_individual_function_convergence_plots(
+                    dimension=dimension,
+                    save_plot=True
+                )
+            except Exception as e:
+                print(f"Błąd podczas tworzenia wykresów dla {dimension}D: {e}")
+        
+        print("Osobne wykresy zbieżności dla funkcji zostały utworzone!")
+
+    def create_all_comparative_plots(self) -> None:
+        """
+        Tworzy wszystkie zbiorcze wykresy porównawcze.
+        """
+        available = self.get_available_experiments()
+        
+        print("Tworzenie zbiorczych wykresów porównawczych...")
+        print(f"Dostępne eksperymenty: {available}")
+        
+        # Utwórz porównawcze wykresy dla każdego wymiaru
+        for dimension in available['dimensions']:
+            try:
+                self.create_comparative_convergence_plot(
+                    dimension=dimension,
+                    save_plot=True
+                )
+                plt.close()  # Zamknij figurę aby zwolnić pamięć
+            except Exception as e:
+                print(f"Błąd podczas tworzenia porównawczego wykresu dla {dimension}D: {e}")
+        
+        # Jeśli są dane dla różnych wymiarów, utwórz też wykres zbiorczy
+        if len(available['dimensions']) > 1:
+            print("Tworzenie zbiorczego wykresu dla wszystkich wymiarów...")
+            try:
+                self.create_comparative_convergence_plot(
+                    dimension=None,  # Wszystkie wymiary
+                    save_plot=True
+                )
+                plt.close()
+            except Exception as e:
+                print(f"Błąd podczas tworzenia zbiorczego wykresu: {e}")
+        
+        print(f"Zbiorcze wykresy porównawcze zapisane w katalogu: {self.convergence_plots_dir}")
+
+    def create_individual_function_sigma_plots(self, dimension: int = None,
+                                             functions: Optional[List[str]] = None,
+                                             algorithms: Optional[List[str]] = None,
+                                             save_plot: bool = True,
+                                             figsize: Tuple[int, int] = (12, 8)) -> None:
+        """
+        Tworzy osobne wykresy ewolucji sigma dla każdej funkcji testowej.
+        Każdy wykres pokazuje porównanie algorytmów (standard vs modified) dla jednej funkcji,
+        uśredniając wyniki dla różnych generatorów (pcg, mt).
+        
+        Args:
+            dimension: Wymiar do analizy (jeśli None, tworzy wykresy dla każdego dostępnego wymiaru)
+            functions: Lista funkcji do analizy (jeśli None, używa wszystkich dostępnych)
+            algorithms: Lista algorytmów do porównania (domyślnie ['standard', 'modified'])
+            save_plot: Czy zapisać wykresy
+            figsize: Rozmiar figury dla każdego wykresu
+        """
+        available = self.get_available_experiments()
+        available_functions = functions if functions is not None else available['functions']
+        available_algorithms = algorithms if algorithms is not None else available['algorithms']
+        dimensions = available['dimensions']
+        
+        if not available_functions or not available_algorithms:
+            print("Błąd: Brak dostępnych danych do analizy!")
+            return
+        
+        # Jeśli nie podano wymiaru, utwórz wykresy dla każdego dostępnego wymiaru
+        if dimension is None:
+            for dim in dimensions:
+                self.create_individual_function_sigma_plots(
+                    dimension=dim, 
+                    functions=functions, 
+                    algorithms=algorithms,
+                    save_plot=save_plot, 
+                    figsize=figsize
+                )
+            return
+        
+        print(f"Tworzenie osobnych wykresów ewolucji sigma dla wymiaru {dimension}D...")
+        
+        # Kolory dla algorytmów
+        algorithm_colors = {
+            'standard': '#1f77b4',    # Niebieski
+            'modified': '#d62728'     # Czerwony
+        }
+        
+        # Style linii dla algorytmów
+        algorithm_styles = {
+            'standard': '-',   # Linia ciągła
+            'modified': '--'   # Linia przerywana
+        }
+        
+        # Utwórz osobny wykres dla każdej funkcji
+        for function in available_functions:
+            print(f"Tworzenie wykresu sigma dla funkcji: {function} {dimension}D")
+            
+            fig, ax = plt.subplots(figsize=figsize)
+            any_data_found = False
+            
+            # Dla każdego algorytmu
+            for algorithm in available_algorithms:
+                print(f"  Przetwarzam algorytm: {algorithm}")
+                
+                # Zbierz dane z obu generatorów (mt i pcg)
+                combined_conv_data = []
+                
+                for generator in ['mt', 'pcg']:
+                    conv_data = self._load_convergence_data(
+                        function=function,
+                        dimension=dimension,
+                        algorithm=algorithm,
+                        generator=generator
+                    )
+                    combined_conv_data.extend(conv_data)
+                
+                if combined_conv_data:
+                    any_data_found = True
+                    
+                    # Utwórz etykietę
+                    label = f"{algorithm.capitalize()} CMA-ES"
+                    
+                    # Pobierz kolor i styl
+                    color = algorithm_colors.get(algorithm, '#333333')
+                    linestyle = algorithm_styles.get(algorithm, '-')
+                    
+                    # Narysuj średnią krzywą ewolucji sigma
+                    self._plot_sigma_statistics_comparative(
+                        ax, combined_conv_data, color, label, linestyle
+                    )
+                else:
+                    print(f"    Brak danych dla {algorithm}")
+            
+            if not any_data_found:
+                print(f"  Brak danych dla funkcji {function} {dimension}D!")
+                plt.close(fig)
+                continue
+            
+            # Formatowanie wykresu
+            ax.set_xlabel('Liczba ewaluacji funkcji', fontsize=12)
+            ax.set_ylabel('Odchylenie standardowe (sigma) - skala log', fontsize=12)
+            ax.set_title(f'Ewolucja sigma CMA-ES - {function.capitalize()} {dimension}D', fontsize=14)
+            ax.grid(True, alpha=0.3)
+            ax.legend(fontsize=11)
+            
+            # Ustaw skalę logarytmiczną
+            ax.set_yscale('log')
+            ax.set_ylim(bottom=1e-8)
+            
+            plt.tight_layout()
+            
+            if save_plot:
+                # Utwórz katalog dla sigma plots jeśli nie istnieje
+                sigma_plots_dir = self.convergence_plots_dir / "individual_sigma"
+                sigma_plots_dir.mkdir(exist_ok=True)
+                
+                output_filename = f"{function}_sigma_evolution_{dimension}D.png"
+                output_path = sigma_plots_dir / output_filename
+                plt.savefig(output_path, dpi=300, bbox_inches='tight')
+                print(f"  Wykres zapisano jako: {output_path}")
+            else:
+                plt.show()
+            plt.close(fig)  # Zamknij figurę aby zwolnić pamięć
+    
+    def _plot_sigma_statistics_comparative(self, ax, conv_data: List[Dict], 
+                                         color: str, label: str, linestyle: str) -> None:
+        """
+        Rysuje statystyki ewolucji sigma dla porównawczego wykresu.
+        
+        Args:
+            ax: Obiekt osi matplotlib
+            conv_data: Lista danych zbieżności (zawierająca dane sigma)
+            color: Kolor linii
+            label: Etykieta dla legendy
+            linestyle: Styl linii
+        """
+        if not conv_data:
+            return
+        
+        # Znajdź wspólną siatkę punktów ewaluacji
+        all_evaluations = []
+        for data in conv_data:
+            all_evaluations.extend(data['evaluations'])
+        
+        if not all_evaluations:
+            return
+        
+        # Utwórz regularną siatkę ewaluacji
+        min_eval = min(all_evaluations)
+        max_eval = max(all_evaluations)
+        common_evals = np.linspace(min_eval, max_eval, 100)
+        
+        # Interpoluj dane sigma na wspólną siatkę
+        interpolated_sigmas = []
+        
+        for data in conv_data:
+            if len(data['evaluations']) < 2 or 'sigma' not in data or len(data['sigma']) < 2:
+                continue
+                
+            try:
+                # Filtruj prawidłowe wartości sigma
+                valid_mask = (
+                    np.isfinite(data['sigma']) & 
+                    (data['sigma'] > 0) &
+                    np.isfinite(data['evaluations'])
+                )
+                
+                if valid_mask.sum() < 2:
+                    continue
+                
+                valid_evals = data['evaluations'][valid_mask]
+                valid_sigmas = data['sigma'][valid_mask]
+                
+                # Interpolacja liniowa
+                interpolated = np.interp(common_evals, valid_evals, valid_sigmas)
+                interpolated_sigmas.append(interpolated)
+                
+            except Exception as e:
+                print(f"Błąd interpolacji sigma: {e}")
+                continue
+        
+        if len(interpolated_sigmas) > 0:
+            interpolated_sigmas = np.array(interpolated_sigmas)
+            
+            # Oblicz medianę i kwartyle
+            median_sigma = np.median(interpolated_sigmas, axis=0)
+            q25_sigma = np.percentile(interpolated_sigmas, 25, axis=0)
+            q75_sigma = np.percentile(interpolated_sigmas, 75, axis=0)
+            
+            # Filtruj prawidłowe punkty
+            valid_mask = (
+                np.isfinite(median_sigma) & 
+                (median_sigma > 0)
+            )
+            
+            if np.any(valid_mask):
+                valid_evals = common_evals[valid_mask]
+                valid_median = median_sigma[valid_mask]
+                valid_q25 = q25_sigma[valid_mask]
+                valid_q75 = q75_sigma[valid_mask]
+                
+                # Rysuj medianę
+                ax.plot(valid_evals, valid_median, color=color, linewidth=2.5, 
+                       linestyle=linestyle, label=label)
+                
+                # Rysuj przedział kwartylowy
+                ax.fill_between(valid_evals, 
+                               np.maximum(valid_q25, np.full_like(valid_q25, 1e-10)),
+                               valid_q75,
+                               color=color, alpha=0.15)
+    
+    def create_all_individual_sigma_plots(self) -> None:
+        """
+        Tworzy wszystkie osobne wykresy ewolucji sigma dla każdej funkcji testowej.
+        """
+        available = self.get_available_experiments()
+        
+        print("Tworzenie osobnych wykresów ewolucji sigma dla każdej funkcji...")
+        print(f"Dostępne eksperymenty: {available}")
+        
+        # Utwórz osobne wykresy dla każdego wymiaru
+        for dimension in available['dimensions']:
+            try:
+                self.create_individual_function_sigma_plots(
+                    dimension=dimension,
+                    save_plot=True
+                )
+            except Exception as e:
+                print(f"Błąd podczas tworzenia wykresów sigma dla {dimension}D: {e}")
+        
+        print("Osobne wykresy ewolucji sigma dla funkcji zostały utworzone!") 

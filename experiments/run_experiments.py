@@ -20,7 +20,7 @@ from experiments.experiment_runner import ExperimentRunner
 from experiments.config import (
     DEFAULT_DIMENSIONS, DEFAULT_FUNCTIONS, DEFAULT_ALGORITHMS, DEFAULT_GENERATORS,
     DEFAULT_SEEDS, DEFAULT_MAX_EVALUATIONS, DEFAULT_FTOL, DEFAULT_XTOL,
-    DEFAULT_INITIAL_SIGMA
+    DEFAULT_INITIAL_SIGMA, get_ftarget_stop_value
 )
 
 
@@ -50,6 +50,8 @@ def parse_arguments():
                        help='Początkowa wartość sigma')
     parser.add_argument('--output-dir', type=str, default=None,
                        help='Katalog wynikowy (domyślnie: results/YYYYMMDD_HHMMSS)')
+    parser.add_argument('--population-size', type=int, default=None,
+                       help='Rozmiar populacji (domyślnie: obliczany automatycznie)')
     
     return parser.parse_args()
 
@@ -79,7 +81,9 @@ def main():
         'max_evaluations': args.max_evaluations,
         'ftol': args.ftol,
         'xtol': args.xtol,
-        'initial_sigma': args.initial_sigma
+        'initial_sigma': args.initial_sigma,
+        'population_size': args.population_size,
+        'ftarget_stop_value': get_ftarget_stop_value(args.functions, args.dimensions)
     }
     
     # Utworzenie i uruchomienie eksperymentów z wybraną biblioteką
