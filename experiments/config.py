@@ -16,7 +16,7 @@ DEFAULT_GENERATORS = ['mt', 'pcg']
 DEFAULT_SEEDS = list(range(1, 31))  # 30 powtórzeń
 DEFAULT_MAX_EVALUATIONS = 50000  # Zwiększone z 10000 dla trudnych funkcji
 DEFAULT_FTOL = 1e-9  # Zmniejszone z 1e-6 dla większej cierpliwości w funkcjach multimodalnych
-DEFAULT_XTOL = 1e-9  # Zmniejszone z 1e-6 dla większej cierpliwości
+DEFAULT_XTOL = 1e-9  # Zmniejszone z 1e-6 dla `większej cierpliwości
 DEFAULT_INITIAL_SIGMA = 2.0  # Zwiększone z 1.0 dla lepszej eksploracji
 
 # Przedziały odstępu między zapisywaniem danych zbieżności (co ile ewaluacji)

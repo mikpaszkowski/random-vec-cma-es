@@ -9,7 +9,6 @@ algorytm CMA-ES z różnymi funkcjami testowymi i generatorami liczb losowych.
 import os
 import sys
 import argparse
-import json
 from datetime import datetime
 
 # Dodanie ścieżki głównej projektu do sys.path
@@ -60,12 +59,13 @@ def parse_arguments():
     
     return parser.parse_args()
 
-def run_all_experiments():
-    args = parse_arguments()
+def main():
+    """Główna funkcja uruchamiająca eksperymenty."""
     
+    args = parse_arguments()
+        
     # Ustalenie katalogu wynikowego
-    if args.output_dir:
-        output_dir = args.output_dir
+    if output_dir:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
     else:
@@ -107,30 +107,6 @@ def run_all_experiments():
     print(f"Czas wykonania: {end_time - start_time}")
     print(f"Liczba udanych eksperymentów: {len(results)}")
     print(f"Wyniki zapisane w: {output_dir}")
-
-
-def main():
-    """Główna funkcja uruchamiająca eksperymenty."""
-    
-    # Uruchomienie eksperymentów
-    # run_all_experiments()
-    
-    # Uruchomienie generowania wykresów zbieżności oraz sigma
-    create_individual_function_plots()
-    
-    # # Uruchomienie generowania wykresów zbiorczych dla zbieznosci
-    create_comparative_plots()
-    
-    #Uruchomienie generowania tabeli z wynikami
-    generate_summary_table(results_dir='results/final')
-    
-    # #Uruchomienie generowania tabeli z wynikami analizy statystycznej
-    analyzer = SimpleStatisticalAnalysis("results/final/all_results_summary.csv")
-    analyzer.run_analysis()
-    
-    #Uruchomienie generowania tabeli z wynikami
-    generate_comparison_table(results_dir='results/final')
-    
     
     return 0
 

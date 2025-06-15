@@ -1437,8 +1437,8 @@ class ExperimentVisualizer:
                 output_path = sigma_plots_dir / output_filename
                 plt.savefig(output_path, dpi=300, bbox_inches='tight')
                 print(f"  Wykres zapisano jako: {output_path}")
-            else:
-                plt.show()
+            
+            plt.show()
             plt.close(fig)  # Zamknij figurę aby zwolnić pamięć
     
     def _plot_sigma_statistics_comparative(self, ax, conv_data: List[Dict], 

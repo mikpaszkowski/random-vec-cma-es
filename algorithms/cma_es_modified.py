@@ -36,6 +36,7 @@ class ModifiedCMAES(StandardCMAES):
     1. Skalowanie losowego ps aby dopasować się do typowych wartości
     2. Uproszczone zarządzanie stanem
     3. Bezpieczniejsze wywołania optimize()
+    4. Dodana funkcjonalność reproducible z kontrolą seed
     """
     
     def __init__(self, 
@@ -44,7 +45,8 @@ class ModifiedCMAES(StandardCMAES):
                  initial_sigma: float = 1.0,
                  population_size: Optional[int] = None,
                  random_generator = None,
-                 ps_scale_factor: float = 0.5):
+                 ps_scale_factor: float = 0.5,
+                 seed: Optional[int] = None):
         """
         Inicjalizacja ulepszonej wersji algorytmu CMA-ES.
         
@@ -55,13 +57,26 @@ class ModifiedCMAES(StandardCMAES):
             population_size: Rozmiar populacji. Jeśli None, zostanie obliczony automatycznie.
             random_generator: Generator liczb losowych.
             ps_scale_factor: Współczynnik skalowania losowego ps (domyślnie 0.5).
+            seed: Seed dla pełnej kontroli nad losowością i powtarzalnością.
         """
         # Wywołaj inicjalizację klasy bazowej
         super().__init__(objective_function, initial_mean, initial_sigma, population_size, random_generator)
         
         # Zachowaj parametry
-        self.random_generator = random_generator if random_generator is not None else np.random
+        self.master_seed = seed
         self.ps_scale_factor = ps_scale_factor
+        
+        # Ustaw seed w opcjach CMA-ES jeśli podany
+        if seed is not None:
+            self.options['seed'] = seed
+        
+        # Konfiguruj generator losowy
+        if seed is not None:
+            self.random_generator = np.random.RandomState(seed + 1)  # +1 aby odróżnić od głównego seed
+        elif random_generator is not None:
+            self.random_generator = random_generator
+        else:
+            self.random_generator = np.random
         
         # Flaga oznaczająca czy ps zostało już zainicjalizowane
         self._ps_initialized = False
@@ -71,7 +86,7 @@ class ModifiedCMAES(StandardCMAES):
         self._generate_random_ps()
     
     def _generate_random_ps(self):
-        """Generuje losowy wektor ps z odpowiednim skalowaniem."""
+        """Generuje powtarzalny losowy wektor ps z odpowiednim skalowaniem."""
         if hasattr(self.random_generator, 'randn'):
             raw_ps = self.random_generator.randn(self.dimension)
         else:
@@ -84,7 +99,8 @@ class ModifiedCMAES(StandardCMAES):
         
         self._random_ps = raw_ps * (target_norm / np.linalg.norm(raw_ps))
         
-        print(f"DEBUG: Wygenerowano losowy ps o normie {np.linalg.norm(self._random_ps):.4f}")
+        seed_info = f" (seed: {self.master_seed})" if self.master_seed is not None else ""
+        print(f"DEBUG: Wygenerowano {'powtarzalny ' if self.master_seed is not None else ''}losowy ps o normie {np.linalg.norm(self._random_ps):.4f}{seed_info}")
     
     def _apply_random_ps(self):
         """Aplikuje losowy ps do obiektu CMA-ES."""
@@ -94,7 +110,8 @@ class ModifiedCMAES(StandardCMAES):
             
             self.es.adapt_sigma.ps = self._random_ps.copy()
             self._ps_initialized = True
-            print(f"DEBUG: Zastąpiono ps wektorem: {self._random_ps}")
+            seed_info = f" (seed: {self.master_seed})" if self.master_seed is not None else ""
+            print(f"DEBUG: Zastąpiono ps {'powtarzalnym ' if self.master_seed is not None else ''}wektorem: {self._random_ps}{seed_info}")
     
     def tell(self, solutions: np.ndarray, fitnesses: np.ndarray) -> None:
         """
@@ -114,10 +131,16 @@ class ModifiedCMAES(StandardCMAES):
                 verbose: bool = False,
                 convergence_interval: int = 100) -> Dict[str, Any]:
         """
-        Przeprowadza pełną optymalizację z losowym ps.
+        Przeprowadza pełną optymalizację z losowym ps i opcjonalną powtarzalnością.
         
         POPRAWA: Uproszczona logika - zawsze tworzymy nowy obiekt es.
+        DODANO: Pełna kontrola nad powtarzalnością przez seed.
         """
+        # KLUCZOWE: Ustaw wszystkie seedy na początku optimize dla powtarzalności
+        if self.master_seed is not None:
+            np.random.seed(self.master_seed)
+            self.options['seed'] = self.master_seed
+        
         # Resetuj statystyki
         self.evaluations = 0
         self.iterations = 0
@@ -219,7 +242,9 @@ class ModifiedCMAES(StandardCMAES):
             'success': True,
             'convergence_data': convergence_data,
             'ps_scale_factor': self.ps_scale_factor,
-            'initial_ps_norm': np.linalg.norm(self._random_ps) if self._random_ps is not None else 0.0
+            'initial_ps_norm': np.linalg.norm(self._random_ps) if self._random_ps is not None else 0.0,
+            'seed': self.master_seed,
+            'reproducible': self.master_seed is not None
         }
         
         return result

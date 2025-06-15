@@ -10,8 +10,6 @@ seaborn>=0.11.0
 # Optimization and machine learning
 cma>=3.0.0
 
-# Random number generation
-pcg-numpy>=1.0.0
 
 # Utility packages
 tabulate>=0.8.0
